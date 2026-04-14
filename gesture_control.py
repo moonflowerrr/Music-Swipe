@@ -21,6 +21,8 @@ cap = cv2.VideoCapture(0)
 hand_history = deque(maxlen=10)  # Store last 10 hand positions for stability
 point_history = deque(maxlen=10)  # Store recent pointing directions
 pinch_history = deque(maxlen=5)  # Store recent pinch detections
+peace_sign_detected = False  # Track if peace sign is active
+hand_heart_detected = False  # Track if hand heart is active
 last_gesture_time = 0
 COOLDOWN = 1.0  # Seconds between gestures
 SWIPE_THRESHOLD = 0.08  # Minimum distance for swipe detection
@@ -101,6 +103,54 @@ def detect_pinch(hand_landmarks):
     return None
 
 
+def detect_peace_sign(hand_landmarks):
+    # Detect peace sign: index and middle fingers extended upward, others folded
+    index_tip = hand_landmarks.landmark[8]
+    index_pip = hand_landmarks.landmark[6]
+    middle_tip = hand_landmarks.landmark[12]
+    middle_pip = hand_landmarks.landmark[10]
+    ring_tip = hand_landmarks.landmark[16]
+    ring_pip = hand_landmarks.landmark[14]
+    pinky_tip = hand_landmarks.landmark[20]
+    pinky_pip = hand_landmarks.landmark[18]
+    thumb_tip = hand_landmarks.landmark[4]
+    thumb_ip = hand_landmarks.landmark[3]
+    
+    # Check if index and middle fingers are extended
+    index_extended = index_tip.y < index_pip.y
+    middle_extended = middle_tip.y < middle_pip.y
+    # Check if other fingers are folded
+    ring_folded = ring_tip.y > ring_pip.y
+    pinky_folded = pinky_tip.y > pinky_pip.y
+    thumb_folded = thumb_tip.y > thumb_ip.y
+    
+    return index_extended and middle_extended and ring_folded and pinky_folded and thumb_folded
+
+
+def detect_hand_heart(hand_landmarks):
+    # Detect hand heart: thumb and index forming a V/heart top, other fingers extended down
+    thumb_tip = hand_landmarks.landmark[4]
+    index_tip = hand_landmarks.landmark[8]
+    middle_tip = hand_landmarks.landmark[12]
+    ring_tip = hand_landmarks.landmark[16]
+    pinky_tip = hand_landmarks.landmark[20]
+    index_pip = hand_landmarks.landmark[6]
+    middle_pip = hand_landmarks.landmark[10]
+    
+    # Distance between thumb and index tips should be moderate (forming V shape)
+    thumb_index_distance = ((thumb_tip.x - index_tip.x)**2 + (thumb_tip.y - index_tip.y)**2)**0.5
+    
+    # Other fingers should be extended downward
+    middle_extended = middle_tip.y > middle_pip.y
+    ring_extended = ring_tip.y > hand_landmarks.landmark[14].y
+    pinky_extended = pinky_tip.y > hand_landmarks.landmark[18].y
+    
+    # Thumb and index should form a V (not too close, not too far)
+    v_formed = 0.05 < thumb_index_distance < 0.15
+    
+    return v_formed and middle_extended and ring_extended and pinky_extended
+
+
 def detect_pointing_direction(hand_landmarks):
     if not is_index_pointing(hand_landmarks):
         return None
@@ -154,6 +204,23 @@ def seek_position(direction, amount_seconds):
             pass
 
 
+def set_playback_speed(speed):
+    """Set playback speed - 0.75 for slow, 1.5 for fast"""
+    system = platform.system()
+    
+    if system == "Darwin":  # macOS Spotify
+        # Note: Spotify doesn't natively support speed control, so we print feedback
+        print(f"Speed: {speed}x (Note: Spotify doesn't support speed control natively)")
+    elif system == "Windows":
+        print(f"Speed: {speed}x (Note: Spotify doesn't support speed control natively)")
+    else:  # Linux
+        try:
+            subprocess.run(['playerctl', 'volume', str(speed)])
+            print(f"Speed: {speed}x set (if player supports it)")
+        except:
+            print(f"Speed: {speed}x (Note: Player may not support speed control)")
+
+
 def play_media_key(key_name):
     """Cross-platform media key control"""
     system = platform.system()
@@ -165,6 +232,14 @@ def play_media_key(key_name):
             cmd = 'tell application "Spotify" to previous track'
         elif key_name == 'play_pause':
             cmd = 'tell application "Spotify" to playpause'
+        elif key_name == 'slow':
+            print("SLOW REVERB - 0.75x Speed")
+            set_playback_speed(0.75)
+            return
+        elif key_name == 'nightcore':
+            print("NIGHTCORE - 1.5x Speed")
+            set_playback_speed(1.5)
+            return
         elif key_name == 'rewind':
             # Rewind by 5 seconds
             cmd = '''
@@ -199,6 +274,12 @@ def play_media_key(key_name):
         import pyautogui
         if key_name in key_map:
             pyautogui.press(key_map.get(key_name, 'playpause'))
+        elif key_name == 'slow':
+            print("SLOW REVERB - 0.75x Speed")
+            set_playback_speed(0.75)
+        elif key_name == 'nightcore':
+            print("NIGHTCORE - 1.5x Speed")
+            set_playback_speed(1.5)
         elif key_name == 'rewind':
             pyautogui.hotkey('alt', 'left')
         elif key_name == 'fastforward':
@@ -211,6 +292,12 @@ def play_media_key(key_name):
         }
         if key_name in key_map:
             subprocess.run(['playerctl', key_map.get(key_name, 'play-pause')])
+        elif key_name == 'slow':
+            print("SLOW REVERB - 0.75x Speed")
+            set_playback_speed(0.75)
+        elif key_name == 'nightcore':
+            print("NIGHTCORE - 1.5x Speed")
+            set_playback_speed(1.5)
         elif key_name == 'rewind':
             # Get current position and rewind by 5 seconds
             try:
@@ -283,8 +370,8 @@ while cap.isOpened():
             elif pinch and is_pinching and pinch == pinch_direction:
                 # Continue holding the pinch - seek continuously
                 elapsed_time = current_time - pinch_start_time
-                # Seek 10 seconds per second of pinch hold (fast forward/rewind speed)
-                seek_amount = elapsed_time * 10
+                # Seek 2 seconds per second of pinch hold (slower, more controlled)
+                seek_amount = elapsed_time * 2
                 if pinch_direction == 'left':
                     seek_position('left', -seek_amount)
                 else:
@@ -371,8 +458,8 @@ while cap.isOpened():
             elif pinch and is_pinching and pinch == pinch_direction:
                 # Continue holding the pinch - seek continuously
                 elapsed_time = current_time - pinch_start_time
-                # Seek 10 seconds per second of pinch hold (fast forward/rewind speed)
-                seek_amount = elapsed_time * 10
+                # Seek 2 seconds per second of pinch hold (slower, more controlled)
+                seek_amount = elapsed_time * 2
                 if pinch_direction == 'left':
                     seek_position('left', -seek_amount)
                 else:
@@ -387,12 +474,32 @@ while cap.isOpened():
                 point_history.clear()
                 pinch_history.clear()
 
+            # Detect peace sign (slow/reverb effect)
+            if detect_peace_sign(hand_landmarks) and not peace_sign_detected and current_time - last_gesture_time > COOLDOWN:
+                peace_sign_detected = True
+                print("PEACE SIGN - Slow Reverb (0.75x)")
+                play_media_key('slow')
+                last_gesture_time = current_time
+            elif not detect_peace_sign(hand_landmarks) and peace_sign_detected:
+                peace_sign_detected = False
+            
+            # Detect hand heart (nightcore effect)
+            if detect_hand_heart(hand_landmarks) and not hand_heart_detected and current_time - last_gesture_time > COOLDOWN:
+                hand_heart_detected = True
+                print("HAND HEART - Nightcore (1.5x)")
+                play_media_key('nightcore')
+                last_gesture_time = current_time
+            elif not detect_hand_heart(hand_landmarks) and hand_heart_detected:
+                hand_heart_detected = False
+
     # Display info
     cv2.putText(image, "Right=Next | Left=Prev | Up=Play/Pause",
                 (10, 30), cv2.FONT_HERSHEY_SIMPLEX, 0.6, (0, 255, 0), 2)
     cv2.putText(image, "Pinch Left=Rewind | Pinch Right=FastForward (Hold!)",
                 (10, 60), cv2.FONT_HERSHEY_SIMPLEX, 0.6, (0, 255, 0), 2)
-    cv2.putText(image, "Press ESC to quit", (10, 90), cv2.FONT_HERSHEY_SIMPLEX, 0.6, (0, 255, 0), 2)
+    cv2.putText(image, "Peace=Slow (0.75x) | Heart=Nightcore (1.5x)",
+                (10, 90), cv2.FONT_HERSHEY_SIMPLEX, 0.6, (0, 255, 0), 2)
+    cv2.putText(image, "Press ESC to quit", (10, 120), cv2.FONT_HERSHEY_SIMPLEX, 0.6, (0, 255, 0), 2)
     
     cv2.imshow('Hand Gesture Music Control', image)
     if cv2.waitKey(5) & 0xFF == 27:  # ESC to quit
