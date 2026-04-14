@@ -22,6 +22,7 @@ hand_history = deque(maxlen=15)  # Store last 15 hand positions for stability
 point_history = deque(maxlen=10)  # Store recent pointing directions
 last_gesture_time = 0
 COOLDOWN = 1.0  # Seconds between gestures
+SWIPE_THRESHOLD = 0.1  # Minimum distance for swipe detection
 POINTING_THRESHOLD = 0.18  # Minimum index-finger vector length for pointing
 POINTING_RATIO = 1.5  # Directional ratio for pointing vs. the other axis
 RESET_THRESHOLD = 0.02  # Hand must settle before the next gesture
