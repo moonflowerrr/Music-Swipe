@@ -18,15 +18,15 @@ mp_drawing = mp.solutions.drawing_utils
 cap = cv2.VideoCapture(0)
 
 # Gesture tracking
-hand_history = deque(maxlen=15)  # Store last 15 hand positions for stability
+hand_history = deque(maxlen=10)  # Store last 10 hand positions for stability
 point_history = deque(maxlen=10)  # Store recent pointing directions
 last_gesture_time = 0
-COOLDOWN = 2.0  # Seconds between gestures
-SWIPE_THRESHOLD = 0.1  # Minimum distance for swipe detection
+COOLDOWN = 1.0  # Seconds between gestures
+SWIPE_THRESHOLD = 0.08  # Minimum distance for swipe detection
 POINTING_THRESHOLD = 0.1  # Minimum index-finger vector length for pointing
 POINTING_RATIO = 1.2  # Directional ratio for pointing vs. the other axis
 RESET_THRESHOLD = 0.02  # Hand must settle before the next gesture
-DIRECTION_RATIO = 0.75  # Fraction of movement that must be in one direction
+DIRECTION_RATIO = 0.6  # Fraction of movement that must be in one direction
 
 gesture_ready = True
 
@@ -160,14 +160,14 @@ while cap.isOpened():
 
         if not is_fist(hand_landmarks):
             # Reset gesture readiness when the hand is stable again
-            if not gesture_ready and len(hand_history) > 5:
+            if not gesture_ready and len(hand_history) > 3:
                 xs = [p[0] for p in hand_history]
                 ys = [p[1] for p in hand_history]
                 if max(xs) - min(xs) < RESET_THRESHOLD and max(ys) - min(ys) < RESET_THRESHOLD:
                     gesture_ready = True
 
             # Detect swipe gestures first
-            if gesture_ready and len(hand_history) > 5 and current_time - last_gesture_time > COOLDOWN:
+            if gesture_ready and len(hand_history) > 3 and current_time - last_gesture_time > COOLDOWN:
                 oldest_x, oldest_y, _ = hand_history[0]
                 newest_x, newest_y, _ = hand_history[-1]
 
