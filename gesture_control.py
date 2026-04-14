@@ -29,6 +29,11 @@ POINTING_RATIO = 1.2  # Directional ratio for pointing vs. the other axis
 RESET_THRESHOLD = 0.02  # Hand must settle before the next gesture
 DIRECTION_RATIO = 0.6  # Fraction of movement that must be in one direction
 
+# Pinch tracking for continuous fast forward/rewind
+is_pinching = False
+pinch_start_time = None
+pinch_direction = None  # 'left' or 'right'
+
 gesture_ready = True
 
 def is_consistent_movement(history, axis='x'):
@@ -113,6 +118,42 @@ def detect_pointing_direction(hand_landmarks):
     return None
 
 
+def seek_position(direction, amount_seconds):
+    """Seek forward or backward in the song by a specific amount"""
+    system = platform.system()
+    
+    if system == "Darwin":  # macOS
+        cmd = f'''
+        tell application "Spotify"
+            set curPos to player position
+            set newPos to curPos + {amount_seconds}
+            if newPos < 0 then
+                set newPos to 0
+            end if
+            set player position to newPos
+        end tell
+        '''
+        subprocess.run(['osascript', '-e', cmd])
+    elif system == "Windows":
+        try:
+            import pyautogui
+            # Use keyboard shortcuts to seek
+            if direction == 'left':
+                pyautogui.hotkey('shift', 'left')
+            else:
+                pyautogui.hotkey('shift', 'right')
+        except:
+            pass
+    else:  # Linux
+        try:
+            result = subprocess.run(['playerctl', 'position'], capture_output=True, text=True)
+            current_pos = float(result.stdout.strip())
+            new_pos = max(0, current_pos + amount_seconds)
+            subprocess.run(['playerctl', 'position', str(new_pos)])
+        except:
+            pass
+
+
 def play_media_key(key_name):
     """Cross-platform media key control"""
     system = platform.system()
@@ -125,13 +166,26 @@ def play_media_key(key_name):
         elif key_name == 'play_pause':
             cmd = 'tell application "Spotify" to playpause'
         elif key_name == 'rewind':
-            # Rewind by sending keyboard shortcut
-            subprocess.run(['osascript', '-e', 'tell application "System Events" to key code 123 using {command down, option down}'])
-            return
+            # Rewind by 5 seconds
+            cmd = '''
+            tell application "Spotify"
+                set curPos to player position
+                set newPos to curPos - 5
+                if newPos < 0 then
+                    set newPos to 0
+                end if
+                set player position to newPos
+            end tell
+            '''
         elif key_name == 'fastforward':
-            # Fast forward by sending keyboard shortcut
-            subprocess.run(['osascript', '-e', 'tell application "System Events" to key code 124 using {command down, option down}'])
-            return
+            # Fast forward by 5 seconds
+            cmd = '''
+            tell application "Spotify"
+                set curPos to player position
+                set newPos to curPos + 5
+                set player position to newPos
+            end tell
+            '''
         else:
             cmd = ''
         if cmd:
@@ -140,21 +194,41 @@ def play_media_key(key_name):
         key_map = {
             'next': 'nexttrack',
             'prev': 'prevtrack',
-            'play_pause': 'playpause',
-            'rewind': 'medialast',
-            'fastforward': 'medianext'
+            'play_pause': 'playpause'
         }
         import pyautogui
-        pyautogui.press(key_map.get(key_name, 'playpause'))
+        if key_name in key_map:
+            pyautogui.press(key_map.get(key_name, 'playpause'))
+        elif key_name == 'rewind':
+            pyautogui.hotkey('alt', 'left')
+        elif key_name == 'fastforward':
+            pyautogui.hotkey('alt', 'right')
     else:  # Linux
         key_map = {
             'next': 'Next',
             'prev': 'Previous',
-            'play_pause': 'PlayPause',
-            'rewind': 'Previous',
-            'fastforward': 'Next'
+            'play_pause': 'PlayPause'
         }
-        subprocess.run(['playerctl', key_map.get(key_name, 'play-pause')])
+        if key_name in key_map:
+            subprocess.run(['playerctl', key_map.get(key_name, 'play-pause')])
+        elif key_name == 'rewind':
+            # Get current position and rewind by 5 seconds
+            try:
+                result = subprocess.run(['playerctl', 'position'], capture_output=True, text=True)
+                current_pos = float(result.stdout.strip())
+                new_pos = max(0, current_pos - 5)
+                subprocess.run(['playerctl', 'position', str(new_pos)])
+            except:
+                pass
+        elif key_name == 'fastforward':
+            # Get current position and fast forward by 5 seconds
+            try:
+                result = subprocess.run(['playerctl', 'position'], capture_output=True, text=True)
+                current_pos = float(result.stdout.strip())
+                new_pos = current_pos + 5
+                subprocess.run(['playerctl', 'position', str(new_pos)])
+            except:
+                pass
 
 while cap.isOpened():
     success, image = cap.read()
@@ -191,11 +265,39 @@ while cap.isOpened():
 
         if not is_fist(hand_landmarks):
             # Reset gesture readiness when the hand is stable again
-            if not gesture_ready and len(hand_history) > 3:
+            if not gesture_ready and len(hand_history) > 3 and not is_pinching:
                 xs = [p[0] for p in hand_history]
                 ys = [p[1] for p in hand_history]
                 if max(xs) - min(xs) < RESET_THRESHOLD and max(ys) - min(ys) < RESET_THRESHOLD:
                     gesture_ready = True
+
+            # Detect pinch gestures - continuous tracking (independent of gesture_ready)
+            pinch = pinch_history[-1] if pinch_history else None
+            
+            if pinch and not is_pinching:
+                # Start a new pinch
+                is_pinching = True
+                pinch_start_time = current_time
+                pinch_direction = pinch
+                print(f"PINCH START - {pinch.upper()}")
+            elif pinch and is_pinching and pinch == pinch_direction:
+                # Continue holding the pinch - seek continuously
+                elapsed_time = current_time - pinch_start_time
+                # Seek 10 seconds per second of pinch hold (fast forward/rewind speed)
+                seek_amount = elapsed_time * 10
+                if pinch_direction == 'left':
+                    seek_position('left', -seek_amount)
+                else:
+                    seek_position('right', seek_amount)
+            elif not pinch and is_pinching:
+                # Pinch released
+                is_pinching = False
+                print("PINCH END")
+                last_gesture_time = current_time
+                gesture_ready = False
+                hand_history.clear()
+                point_history.clear()
+                pinch_history.clear()
 
             # Detect swipe gestures first
             if gesture_ready and len(hand_history) > 3 and current_time - last_gesture_time > COOLDOWN:
@@ -257,29 +359,38 @@ while cap.isOpened():
                     point_history.clear()
                     pinch_history.clear()
 
-            # Detect pinch gestures
-            if gesture_ready and len(pinch_history) == pinch_history.maxlen and current_time - last_gesture_time > COOLDOWN:
-                if all(p == 'left' for p in pinch_history):
-                    print("LEFT PINCH - Rewind")
-                    play_media_key('rewind')
-                    last_gesture_time = current_time
-                    gesture_ready = False
-                    hand_history.clear()
-                    point_history.clear()
-                    pinch_history.clear()
-                elif all(p == 'right' for p in pinch_history):
-                    print("RIGHT PINCH - Fast Forward")
-                    play_media_key('fastforward')
-                    last_gesture_time = current_time
-                    gesture_ready = False
-                    hand_history.clear()
-                    point_history.clear()
-                    pinch_history.clear()
+            # Detect pinch gestures - continuous tracking
+            pinch = pinch_history[-1] if pinch_history else None
+            
+            if pinch and not is_pinching:
+                # Start a new pinch
+                is_pinching = True
+                pinch_start_time = current_time
+                pinch_direction = pinch
+                print(f"PINCH START - {pinch.upper()}")
+            elif pinch and is_pinching and pinch == pinch_direction:
+                # Continue holding the pinch - seek continuously
+                elapsed_time = current_time - pinch_start_time
+                # Seek 10 seconds per second of pinch hold (fast forward/rewind speed)
+                seek_amount = elapsed_time * 10
+                if pinch_direction == 'left':
+                    seek_position('left', -seek_amount)
+                else:
+                    seek_position('right', seek_amount)
+            elif not pinch and is_pinching:
+                # Pinch released
+                is_pinching = False
+                print("PINCH END")
+                last_gesture_time = current_time
+                gesture_ready = False
+                hand_history.clear()
+                point_history.clear()
+                pinch_history.clear()
 
     # Display info
     cv2.putText(image, "Right=Next | Left=Prev | Up=Play/Pause",
                 (10, 30), cv2.FONT_HERSHEY_SIMPLEX, 0.6, (0, 255, 0), 2)
-    cv2.putText(image, "Pinch Left=Rewind | Pinch Right=FastForward",
+    cv2.putText(image, "Pinch Left=Rewind | Pinch Right=FastForward (Hold!)",
                 (10, 60), cv2.FONT_HERSHEY_SIMPLEX, 0.6, (0, 255, 0), 2)
     cv2.putText(image, "Press ESC to quit", (10, 90), cv2.FONT_HERSHEY_SIMPLEX, 0.6, (0, 255, 0), 2)
     
