@@ -26,8 +26,8 @@ cap = cv2.VideoCapture(0)
 hand_history = deque(maxlen=10)  # Store last 10 hand positions for stability
 point_history = deque(maxlen=10)  # Store recent pointing directions
 pinch_history = deque(maxlen=5)  # Store recent pinch detections
-peace_sign_detected = False  # Track if peace sign is active
-hand_heart_detected = False  # Track if hand heart is active
+# peace_sign_detected = False  # Track if peace sign is active
+# hand_heart_detected = False  # Track if hand heart is active
 last_gesture_time = 0
 COOLDOWN = 1.0  # Seconds between gestures
 SWIPE_THRESHOLD = 0.08  # Minimum distance for swipe detection
@@ -44,30 +44,30 @@ pinch_direction = None  # 'left' or 'right'
 gesture_ready = True
 
 
-def setup_audio_hijack():
-    """Forces Audio Hijack to open, starts the session, and resets pitch."""
-    print("🚀 Auto-Launching Audio Hijack...")
-    # This script handles the app launch AND clicking the 'Start' button
-    script = (
-        'tell application "Audio Hijack" to activate\n'
-        'delay 3\n' # Give the app time to UI load
-        'tell application "Audio Hijack"\n'
-        '    try\n'
-        '        set theSession to session "Application Audio"\n'
-        '        if not (running of theSession) then start theSession\n'
-        '        set value of parameter "pitch" of block "AUPitch" of theSession to 0\n'
-        '    on error\n'
-        '        log "Session not found"\n'
-        '    end try\n'
-        'end tell'
-    )
-    subprocess.run(['osascript', '-e', script])
+# def setup_audio_hijack():
+#     """Forces Audio Hijack to open, starts the session, and resets pitch."""
+#     print("🚀 Auto-Launching Audio Hijack...")
+#     # This script handles the app launch AND clicking the 'Start' button
+#     script = (
+#         'tell application "Audio Hijack" to activate\n'
+#         'delay 3\n' # Give the app time to UI load
+#         'tell application "Audio Hijack"\n'
+#         '    try\n'
+#         '        set theSession to session "Application Audio"\n'
+#         '        if not (running of theSession) then start theSession\n'
+#         '        set value of parameter "pitch" of block "AUPitch" of theSession to 0\n'
+#         '    on error\n'
+#         '        log "Session not found"\n'
+#         '    end try\n'
+#         'end tell'
+#     )
+#     subprocess.run(['osascript', '-e', script])
 
-def set_hijack_pitch(cents):
-    """Sends a clean, single-line command to avoid syntax errors."""
-    cmd = f'tell application "Audio Hijack" to set value of parameter "pitch" of block "AUPitch" of session "Application Audio" to {cents}'
-    # Use Popen so the camera feed doesn't lag while waiting for Audio Hijack
-    subprocess.Popen(['osascript', '-e', cmd])
+# def set_hijack_pitch(cents):
+#     """Sends a clean, single-line command to avoid syntax errors."""
+#     cmd = f'tell application "Audio Hijack" to set value of parameter "pitch" of block "AUPitch" of session "Application Audio" to {cents}'
+#     # Use Popen so the camera feed doesn't lag while waiting for Audio Hijack
+#     subprocess.Popen(['osascript', '-e', cmd])
 
 
 def is_consistent_movement(history, axis='x'):
@@ -135,55 +135,55 @@ def detect_pinch(hand_landmarks):
     return None
 
 
-def detect_peace_sign(hand_landmarks):
-    # Detect peace sign: index and middle fingers extended upward, others folded
-    index_tip = hand_landmarks.landmark[8]
-    index_pip = hand_landmarks.landmark[6]
-    middle_tip = hand_landmarks.landmark[12]
-    middle_pip = hand_landmarks.landmark[10]
-    ring_tip = hand_landmarks.landmark[16]
-    ring_pip = hand_landmarks.landmark[14]
-    pinky_tip = hand_landmarks.landmark[20]
-    pinky_pip = hand_landmarks.landmark[18]
-    thumb_tip = hand_landmarks.landmark[4]
-    thumb_ip = hand_landmarks.landmark[3]
+# def detect_peace_sign(hand_landmarks):
+#     # Detect peace sign: index and middle fingers extended upward, others folded
+#     index_tip = hand_landmarks.landmark[8]
+#     index_pip = hand_landmarks.landmark[6]
+#     middle_tip = hand_landmarks.landmark[12]
+#     middle_pip = hand_landmarks.landmark[10]
+#     ring_tip = hand_landmarks.landmark[16]
+#     ring_pip = hand_landmarks.landmark[14]
+#     pinky_tip = hand_landmarks.landmark[20]
+#     pinky_pip = hand_landmarks.landmark[18]
+#     thumb_tip = hand_landmarks.landmark[4]
+#     thumb_ip = hand_landmarks.landmark[3]
     
-    # Check if index and middle fingers are extended upward
-    index_extended = index_tip.y < index_pip.y
-    middle_extended = middle_tip.y < middle_pip.y
+#     # Check if index and middle fingers are extended upward
+#     index_extended = index_tip.y < index_pip.y
+#     middle_extended = middle_tip.y < middle_pip.y
 
-    # Check if ring and pinky are folded
-    ring_folded = ring_tip.y > ring_pip.y
-    pinky_folded = pinky_tip.y > pinky_pip.y
+#     # Check if ring and pinky are folded
+#     ring_folded = ring_tip.y > ring_pip.y
+#     pinky_folded = pinky_tip.y > pinky_pip.y
 
-    # Thumb should be near the palm or folded toward the hand
-    thumb_folded = thumb_tip.y > thumb_ip.y or abs(thumb_tip.x - index_tip.x) < 0.12
+#     # Thumb should be near the palm or folded toward the hand
+#     thumb_folded = thumb_tip.y > thumb_ip.y or abs(thumb_tip.x - index_tip.x) < 0.12
     
-    return index_extended and middle_extended and ring_folded and pinky_folded and thumb_folded
+#     return index_extended and middle_extended and ring_folded and pinky_folded and thumb_folded
 
 
-def detect_hand_heart(hand_landmarks):
-    # Detect hand heart: thumb and index forming a V/heart top, other fingers extended down
-    thumb_tip = hand_landmarks.landmark[4]
-    index_tip = hand_landmarks.landmark[8]
-    middle_tip = hand_landmarks.landmark[12]
-    ring_tip = hand_landmarks.landmark[16]
-    pinky_tip = hand_landmarks.landmark[20]
-    index_pip = hand_landmarks.landmark[6]
-    middle_pip = hand_landmarks.landmark[10]
+# def detect_hand_heart(hand_landmarks):
+#     # Detect hand heart: thumb and index forming a V/heart top, other fingers extended down
+#     thumb_tip = hand_landmarks.landmark[4]
+#     index_tip = hand_landmarks.landmark[8]
+#     middle_tip = hand_landmarks.landmark[12]
+#     ring_tip = hand_landmarks.landmark[16]
+#     pinky_tip = hand_landmarks.landmark[20]
+#     index_pip = hand_landmarks.landmark[6]
+#     middle_pip = hand_landmarks.landmark[10]
     
-    # Distance between thumb and index tips should be moderate (forming V shape)
-    thumb_index_distance = ((thumb_tip.x - index_tip.x)**2 + (thumb_tip.y - index_tip.y)**2)**0.5
+#     # Distance between thumb and index tips should be moderate (forming V shape)
+#     thumb_index_distance = ((thumb_tip.x - index_tip.x)**2 + (thumb_tip.y - index_tip.y)**2)**0.5
     
-    # Other fingers should be extended downward
-    middle_down = middle_tip.y > middle_pip.y
-    ring_down = ring_tip.y > hand_landmarks.landmark[14].y
-    pinky_down = pinky_tip.y > hand_landmarks.landmark[18].y
+#     # Other fingers should be extended downward
+#     middle_down = middle_tip.y > middle_pip.y
+#     ring_down = ring_tip.y > hand_landmarks.landmark[14].y
+#     pinky_down = pinky_tip.y > hand_landmarks.landmark[18].y
     
-    # Thumb and index should form a V shape, roughly level horizontally
-    v_formed = 0.05 < thumb_index_distance < 0.18 and abs(thumb_tip.y - index_tip.y) < 0.15
+#     # Thumb and index should form a V shape, roughly level horizontally
+#     v_formed = 0.05 < thumb_index_distance < 0.18 and abs(thumb_tip.y - index_tip.y) < 0.15
     
-    return v_formed and middle_down and ring_down and pinky_down
+#     return v_formed and middle_down and ring_down and pinky_down
 
 
 def detect_pointing_direction(hand_landmarks):
@@ -397,9 +397,6 @@ def play_media_key(key_name):
             except:
                 pass
 
-# --- BEFORE THE WHILE LOOP ---
-setup_audio_hijack()
-current_pitch_state = 0  # 0=Normal, 1=Nightcore, -1=Slow; Track state so we don't spam AppleScript
 
 while cap.isOpened():
     success, image = cap.read()
@@ -434,27 +431,7 @@ while cap.isOpened():
         
         current_time = time.time()
 
-        # --- 1. THE RESET GESTURE (Fist) ---
-        if is_fist(hand_landmarks):
-            if current_pitch_state != 0: 
-                print("FIST - Resetting Pitch to Normal")
-                set_hijack_pitch(0)
-                current_pitch_state = 0
-                last_gesture_time = current_time
-
         if not is_fist(hand_landmarks):
-
-            # Peace Sign = Slow Reverb
-            if detect_peace_sign(hand_landmarks) and current_pitch_state != -1:
-                print("PEACE SIGN - Activating Slow Reverb")
-                set_hijack_pitch(-500) # Deeper pitch
-                current_pitch_state = -1
-            
-            # Hand Heart = Nightcore
-            elif detect_hand_heart(hand_landmarks) and current_pitch_state != 1:
-                print("HAND HEART - Activating Nightcore")
-                set_hijack_pitch(500) # Higher pitch
-                current_pitch_state = 1
 
             # Reset gesture readiness when the hand is stable again
             if not gesture_ready and len(hand_history) > 3 and not is_pinching:
@@ -552,30 +529,30 @@ while cap.isOpened():
                     pinch_history.clear()
 
             # Detect peace sign (slow/reverb effect)
-            if detect_peace_sign(hand_landmarks) and not peace_sign_detected and current_time - last_gesture_time > COOLDOWN:
-                peace_sign_detected = True
-                print("PEACE SIGN - Slow Reverb (0.75x)")
-                play_media_key('slow')
-                last_gesture_time = current_time
-                gesture_ready = False
-                hand_history.clear()
-                point_history.clear()
-                pinch_history.clear()
-            elif not detect_peace_sign(hand_landmarks) and peace_sign_detected:
-                peace_sign_detected = False
+            # if detect_peace_sign(hand_landmarks) and not peace_sign_detected and current_time - last_gesture_time > COOLDOWN:
+            #     peace_sign_detected = True
+            #     print("PEACE SIGN - Slow Reverb (0.75x)")
+            #     play_media_key('slow')
+            #     last_gesture_time = current_time
+            #     gesture_ready = False
+            #     hand_history.clear()
+            #     point_history.clear()
+            #     pinch_history.clear()
+            # elif not detect_peace_sign(hand_landmarks) and peace_sign_detected:
+            #     peace_sign_detected = False
             
             # Detect hand heart (nightcore effect)
-            if detect_hand_heart(hand_landmarks) and not hand_heart_detected and current_time - last_gesture_time > COOLDOWN:
-                hand_heart_detected = True
-                print("HAND HEART - Nightcore (1.5x)")
-                play_media_key('nightcore')
-                last_gesture_time = current_time
-                gesture_ready = False
-                hand_history.clear()
-                point_history.clear()
-                pinch_history.clear()
-            elif not detect_hand_heart(hand_landmarks) and hand_heart_detected:
-                hand_heart_detected = False
+            # if detect_hand_heart(hand_landmarks) and not hand_heart_detected and current_time - last_gesture_time > COOLDOWN:
+            #     hand_heart_detected = True
+            #     print("HAND HEART - Nightcore (1.5x)")
+            #     play_media_key('nightcore')
+            #     last_gesture_time = current_time
+            #     gesture_ready = False
+            #     hand_history.clear()
+            #     point_history.clear()
+            #     pinch_history.clear()
+            # elif not detect_hand_heart(hand_landmarks) and hand_heart_detected:
+            #     hand_heart_detected = False
 
     # Display info
     cv2.putText(image, "Right=Next | Left=Prev | Up=Play/Pause",
