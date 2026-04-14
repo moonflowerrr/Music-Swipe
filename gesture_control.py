@@ -28,12 +28,16 @@ def play_media_key(key_name):
     system = platform.system()
     
     if system == "Darwin":  # macOS
-        key_map = {
-            'next': 'key code 124',
-            'prev': 'key code 123',
-            'play_pause': 'key code 49'
-        }
-        subprocess.run(['osascript', '-e', f'tell application "System Events" to {key_map.get(key_name, "")}'])
+        if key_name == 'next':
+            cmd = 'tell application "Spotify" to next track'
+        elif key_name == 'prev':
+            cmd = 'tell application "Spotify" to previous track'
+        elif key_name == 'play_pause':
+            cmd = 'tell application "Spotify" to playpause'
+        else:
+            cmd = ''
+        if cmd:
+            subprocess.run(['osascript', '-e', cmd])
     elif system == "Windows":
         key_map = {
             'next': 'nexttrack',
