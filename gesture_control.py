@@ -399,7 +399,7 @@ def play_media_key(key_name):
 
 # --- BEFORE THE WHILE LOOP ---
 setup_audio_hijack()
-current_pitch = 0 # Track state so we don't spam AppleScript
+current_pitch_state = 0  # 0=Normal, 1=Nightcore, -1=Slow; Track state so we don't spam AppleScript
 
 while cap.isOpened():
     success, image = cap.read()
