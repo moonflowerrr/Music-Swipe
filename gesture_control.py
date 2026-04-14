@@ -20,6 +20,7 @@ cap = cv2.VideoCapture(0)
 # Gesture tracking
 hand_history = deque(maxlen=10)  # Store last 10 hand positions for stability
 point_history = deque(maxlen=10)  # Store recent pointing directions
+pinch_history = deque(maxlen=5)  # Store recent pinch detections
 last_gesture_time = 0
 COOLDOWN = 1.0  # Seconds between gestures
 SWIPE_THRESHOLD = 0.08  # Minimum distance for swipe detection
@@ -79,6 +80,22 @@ def is_fist(hand_landmarks):
     return fingers_curled
 
 
+def detect_pinch(hand_landmarks):
+    # Detect if thumb and index finger are pinching (close together)
+    thumb_tip = hand_landmarks.landmark[4]
+    index_tip = hand_landmarks.landmark[8]
+    
+    # Calculate distance between thumb and index finger tips
+    distance = ((thumb_tip.x - index_tip.x)**2 + (thumb_tip.y - index_tip.y)**2)**0.5
+    
+    # Pinch detected if distance is small (< 0.05)
+    if distance < 0.05:
+        # Determine if pinch is on left or right side (based on hand x position)
+        hand_x = hand_landmarks.landmark[9].x
+        return 'left' if hand_x < 0.5 else 'right'
+    return None
+
+
 def detect_pointing_direction(hand_landmarks):
     if not is_index_pointing(hand_landmarks):
         return None
@@ -107,6 +124,14 @@ def play_media_key(key_name):
             cmd = 'tell application "Spotify" to previous track'
         elif key_name == 'play_pause':
             cmd = 'tell application "Spotify" to playpause'
+        elif key_name == 'rewind':
+            # Rewind by sending keyboard shortcut
+            subprocess.run(['osascript', '-e', 'tell application "System Events" to key code 123 using {command down, option down}'])
+            return
+        elif key_name == 'fastforward':
+            # Fast forward by sending keyboard shortcut
+            subprocess.run(['osascript', '-e', 'tell application "System Events" to key code 124 using {command down, option down}'])
+            return
         else:
             cmd = ''
         if cmd:
@@ -115,7 +140,9 @@ def play_media_key(key_name):
         key_map = {
             'next': 'nexttrack',
             'prev': 'prevtrack',
-            'play_pause': 'playpause'
+            'play_pause': 'playpause',
+            'rewind': 'medialast',
+            'fastforward': 'medianext'
         }
         import pyautogui
         pyautogui.press(key_map.get(key_name, 'playpause'))
@@ -123,7 +150,9 @@ def play_media_key(key_name):
         key_map = {
             'next': 'Next',
             'prev': 'Previous',
-            'play_pause': 'PlayPause'
+            'play_pause': 'PlayPause',
+            'rewind': 'Previous',
+            'fastforward': 'Next'
         }
         subprocess.run(['playerctl', key_map.get(key_name, 'play-pause')])
 
@@ -152,6 +181,8 @@ while cap.isOpened():
         hand_history.append((palm_x, palm_y, time.time()))
         pointing = detect_pointing_direction(hand_landmarks)
         point_history.append(pointing)
+        pinch = detect_pinch(hand_landmarks)
+        pinch_history.append(pinch)
         
         # Draw hand landmarks
         mp_drawing.draw_landmarks(image, hand_landmarks, mp_hands.HAND_CONNECTIONS)
@@ -181,6 +212,7 @@ while cap.isOpened():
                     gesture_ready = False
                     hand_history.clear()
                     point_history.clear()
+                    pinch_history.clear()
                 elif dx < -SWIPE_THRESHOLD and abs(dy) < 0.1 and is_consistent_movement(hand_history, 'x'):
                     print("LEFT SWIPE - Previous Track")
                     play_media_key('prev')
@@ -188,6 +220,7 @@ while cap.isOpened():
                     gesture_ready = False
                     hand_history.clear()
                     point_history.clear()
+                    pinch_history.clear()
                 elif dy < -SWIPE_THRESHOLD and abs(dx) < 0.1 and is_consistent_movement(hand_history, 'y'):
                     print("UP SWIPE - Play/Pause")
                     play_media_key('play_pause')
@@ -195,6 +228,7 @@ while cap.isOpened():
                     gesture_ready = False
                     hand_history.clear()
                     point_history.clear()
+                    pinch_history.clear()
 
             # Detect pointing gestures if the hand is not actively swiping
             if gesture_ready and len(point_history) == point_history.maxlen and current_time - last_gesture_time > COOLDOWN:
@@ -205,6 +239,7 @@ while cap.isOpened():
                     gesture_ready = False
                     hand_history.clear()
                     point_history.clear()
+                    pinch_history.clear()
                 elif all(p == 'left' for p in point_history):
                     print("LEFT POINT - Previous Track")
                     play_media_key('prev')
@@ -212,6 +247,7 @@ while cap.isOpened():
                     gesture_ready = False
                     hand_history.clear()
                     point_history.clear()
+                    pinch_history.clear()
                 elif all(p == 'up' for p in point_history):
                     print("UP POINT - Play/Pause")
                     play_media_key('play_pause')
@@ -219,11 +255,33 @@ while cap.isOpened():
                     gesture_ready = False
                     hand_history.clear()
                     point_history.clear()
+                    pinch_history.clear()
+
+            # Detect pinch gestures
+            if gesture_ready and len(pinch_history) == pinch_history.maxlen and current_time - last_gesture_time > COOLDOWN:
+                if all(p == 'left' for p in pinch_history):
+                    print("LEFT PINCH - Rewind")
+                    play_media_key('rewind')
+                    last_gesture_time = current_time
+                    gesture_ready = False
+                    hand_history.clear()
+                    point_history.clear()
+                    pinch_history.clear()
+                elif all(p == 'right' for p in pinch_history):
+                    print("RIGHT PINCH - Fast Forward")
+                    play_media_key('fastforward')
+                    last_gesture_time = current_time
+                    gesture_ready = False
+                    hand_history.clear()
+                    point_history.clear()
+                    pinch_history.clear()
 
     # Display info
     cv2.putText(image, "Right=Next | Left=Prev | Up=Play/Pause",
                 (10, 30), cv2.FONT_HERSHEY_SIMPLEX, 0.6, (0, 255, 0), 2)
-    cv2.putText(image, "Press ESC to quit", (10, 70), cv2.FONT_HERSHEY_SIMPLEX, 0.6, (0, 255, 0), 2)
+    cv2.putText(image, "Pinch Left=Rewind | Pinch Right=FastForward",
+                (10, 60), cv2.FONT_HERSHEY_SIMPLEX, 0.6, (0, 255, 0), 2)
+    cv2.putText(image, "Press ESC to quit", (10, 90), cv2.FONT_HERSHEY_SIMPLEX, 0.6, (0, 255, 0), 2)
     
     cv2.imshow('Hand Gesture Music Control', image)
     if cv2.waitKey(5) & 0xFF == 27:  # ESC to quit
