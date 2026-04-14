@@ -18,14 +18,13 @@ mp_drawing = mp.solutions.drawing_utils
 cap = cv2.VideoCapture(0)
 
 # Gesture tracking
-hand_history = deque(maxlen=15)  # Store last 15 hand positions
+hand_history = deque(maxlen=15)  # Store last 15 hand positions for stability
 point_history = deque(maxlen=10)  # Store recent pointing directions
 last_gesture_time = 0
 COOLDOWN = 1.0  # Seconds between gestures
-SWIPE_THRESHOLD = 0.1  # Minimum distance for swipe detection
-POINTING_THRESHOLD = 0.22  # Minimum index-finger pointing distance from wrist
-POINTING_RATIO = 1.5  # Directional ratio for pointing vs. other axes
-RESET_THRESHOLD = 0.02  # Hand must settle before next gesture
+POINTING_THRESHOLD = 0.18  # Minimum index-finger vector length for pointing
+POINTING_RATIO = 1.5  # Directional ratio for pointing vs. the other axis
+RESET_THRESHOLD = 0.02  # Hand must settle before the next gesture
 DIRECTION_RATIO = 0.75  # Fraction of movement that must be in one direction
 
 gesture_ready = True
@@ -47,7 +46,30 @@ def is_consistent_movement(history, axis='x'):
     same_direction = sum(1 for d in deltas if d * direction > 0.001)
     return same_direction / len(deltas) >= DIRECTION_RATIO
 
+def is_index_pointing(hand_landmarks):
+    index_tip = hand_landmarks.landmark[8]
+    index_pip = hand_landmarks.landmark[6]
+    index_dip = hand_landmarks.landmark[7]
+    middle_tip = hand_landmarks.landmark[12]
+    ring_tip = hand_landmarks.landmark[16]
+    pinky_tip = hand_landmarks.landmark[20]
+    thumb_tip = hand_landmarks.landmark[4]
+
+    # Require index finger extended and others reasonably folded
+    index_extended = index_tip.y < index_pip.y < index_dip.y
+    other_fingers_folded = (
+        middle_tip.y > hand_landmarks.landmark[10].y and
+        ring_tip.y > hand_landmarks.landmark[14].y and
+        pinky_tip.y > hand_landmarks.landmark[18].y
+    )
+    thumb_out = abs(thumb_tip.x - index_tip.x) > 0.05
+    return index_extended and other_fingers_folded and thumb_out
+
+
 def detect_pointing_direction(hand_landmarks):
+    if not is_index_pointing(hand_landmarks):
+        return None
+
     wrist = hand_landmarks.landmark[0]
     index_tip = hand_landmarks.landmark[8]
 
@@ -130,12 +152,12 @@ while cap.isOpened():
             if max(xs) - min(xs) < RESET_THRESHOLD and max(ys) - min(ys) < RESET_THRESHOLD:
                 gesture_ready = True
 
-        # Detect swipe gestures
+        # Detect swipe gestures first
         if gesture_ready and len(hand_history) > 5 and current_time - last_gesture_time > COOLDOWN:
             oldest_x, oldest_y, _ = hand_history[0]
             newest_x, newest_y, _ = hand_history[-1]
 
-            dx = newest_x - oldest_x  # Positive = rightward, Negative = leftward
+            dx = newest_x - oldest_x
             dy = newest_y - oldest_y
 
             if dx > SWIPE_THRESHOLD and abs(dy) < 0.05 and is_consistent_movement(hand_history, 'x'):
@@ -145,7 +167,6 @@ while cap.isOpened():
                 gesture_ready = False
                 hand_history.clear()
                 point_history.clear()
-
             elif dx < -SWIPE_THRESHOLD and abs(dy) < 0.05 and is_consistent_movement(hand_history, 'x'):
                 print("LEFT SWIPE - Previous Track")
                 play_media_key('prev')
@@ -153,7 +174,6 @@ while cap.isOpened():
                 gesture_ready = False
                 hand_history.clear()
                 point_history.clear()
-
             elif dy < -SWIPE_THRESHOLD and abs(dx) < 0.05 and is_consistent_movement(hand_history, 'y'):
                 print("UP SWIPE - Play/Pause")
                 play_media_key('play_pause')
@@ -187,7 +207,7 @@ while cap.isOpened():
                 point_history.clear()
 
     # Display info
-    cv2.putText(image, "Swipe or point: Right=Next | Left=Prev | Up=Play/Pause",
+    cv2.putText(image, "Point Right=Next | Left=Prev | Up=Play/Pause",
                 (10, 30), cv2.FONT_HERSHEY_SIMPLEX, 0.6, (0, 255, 0), 2)
     cv2.putText(image, "Press ESC to quit", (10, 70), cv2.FONT_HERSHEY_SIMPLEX, 0.6, (0, 255, 0), 2)
     
