@@ -6,37 +6,6 @@ import subprocess
 import platform
 import os
 
-def setup_audio_hijack():
-    """Launches Audio Hijack and ensures our session is running."""
-    print("🚀 Auto-configuring Audio Hijack...")
-    script = '''
-    tell application "Audio Hijack"
-        activate
-        -- Check if our session exists, if not, we can't automate block creation
-        if exists session "Application Audio" then
-            set theSession to session "Application Audio"
-            if not (running of theSession) then start theSession
-            
-            -- Ensure AUPitch is centered at 0 on start
-            tell theSession
-                set value of parameter "pitch" of block "AUPitch" to 0
-            end tell
-        end if
-    end tell
-    '''
-    subprocess.run(['osascript', '-e', script])
-
-def set_hijack_pitch(cents):
-    """Updates the AUPitch block in real-time."""
-    # Using Popen prevents the hand-tracking from lagging
-    script = f'''
-    tell application "Audio Hijack"
-        tell session "Application Audio"
-            set value of parameter "pitch" of block "AUPitch" to {cents}
-        end tell
-    end tell
-    '''
-    subprocess.Popen(['osascript', '-e', script])
 
 # Global variable to track current playback speed
 current_speed = 1.0
@@ -73,6 +42,33 @@ pinch_start_time = None
 pinch_direction = None  # 'left' or 'right'
 
 gesture_ready = True
+
+
+def setup_audio_hijack():
+    """Forces Audio Hijack to open, starts the session, and resets pitch."""
+    print("🚀 Auto-Launching Audio Hijack...")
+    # This script handles the app launch AND clicking the 'Start' button
+    script = (
+        'tell application "Audio Hijack" to activate\n'
+        'delay 3\n' # Give the app time to UI load
+        'tell application "Audio Hijack"\n'
+        '    try\n'
+        '        set theSession to session "Application Audio"\n'
+        '        if not (running of theSession) then start theSession\n'
+        '        set value of parameter "pitch" of block "AUPitch" of theSession to 0\n'
+        '    on error\n'
+        '        log "Session not found"\n'
+        '    end try\n'
+        'end tell'
+    )
+    subprocess.run(['osascript', '-e', script])
+
+def set_hijack_pitch(cents):
+    """Sends a clean, single-line command to avoid syntax errors."""
+    cmd = f'tell application "Audio Hijack" to set value of parameter "pitch" of block "AUPitch" of session "Application Audio" to {cents}'
+    # Use Popen so the camera feed doesn't lag while waiting for Audio Hijack
+    subprocess.Popen(['osascript', '-e', cmd])
+
 
 def is_consistent_movement(history, axis='x'):
     deltas = []
@@ -401,8 +397,9 @@ def play_media_key(key_name):
             except:
                 pass
 
-# Launch and Configure Audio Hijack
+# --- BEFORE THE WHILE LOOP ---
 setup_audio_hijack()
+current_pitch = 0 # Track state so we don't spam AppleScript
 
 while cap.isOpened():
     success, image = cap.read()
@@ -437,14 +434,28 @@ while cap.isOpened():
         
         current_time = time.time()
 
+        # --- 1. THE RESET GESTURE (Fist) ---
         if is_fist(hand_landmarks):
-            # Reset pitch to 0 when you make a fist
-            if current_speed != 1.0: 
-                print("FIST - Resetting Pitch")
+            if current_pitch_state != 0: 
+                print("FIST - Resetting Pitch to Normal")
                 set_hijack_pitch(0)
-                current_speed = 1.0
+                current_pitch_state = 0
+                last_gesture_time = current_time
 
         if not is_fist(hand_landmarks):
+
+            # Peace Sign = Slow Reverb
+            if detect_peace_sign(hand_landmarks) and current_pitch_state != -1:
+                print("PEACE SIGN - Activating Slow Reverb")
+                set_hijack_pitch(-500) # Deeper pitch
+                current_pitch_state = -1
+            
+            # Hand Heart = Nightcore
+            elif detect_hand_heart(hand_landmarks) and current_pitch_state != 1:
+                print("HAND HEART - Activating Nightcore")
+                set_hijack_pitch(500) # Higher pitch
+                current_pitch_state = 1
+
             # Reset gesture readiness when the hand is stable again
             if not gesture_ready and len(hand_history) > 3 and not is_pinching:
                 xs = [p[0] for p in hand_history]
