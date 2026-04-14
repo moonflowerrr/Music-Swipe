@@ -19,9 +19,12 @@ cap = cv2.VideoCapture(0)
 
 # Gesture tracking
 hand_history = deque(maxlen=15)  # Store last 15 hand positions
+point_history = deque(maxlen=10)  # Store recent pointing directions
 last_gesture_time = 0
 COOLDOWN = 1.0  # Seconds between gestures
 SWIPE_THRESHOLD = 0.1  # Minimum distance for swipe detection
+POINTING_THRESHOLD = 0.22  # Minimum index-finger pointing distance from wrist
+POINTING_RATIO = 1.5  # Directional ratio for pointing vs. other axes
 RESET_THRESHOLD = 0.02  # Hand must settle before next gesture
 DIRECTION_RATIO = 0.75  # Fraction of movement that must be in one direction
 
@@ -43,6 +46,20 @@ def is_consistent_movement(history, axis='x'):
     direction = 1 if total > 0 else -1
     same_direction = sum(1 for d in deltas if d * direction > 0.001)
     return same_direction / len(deltas) >= DIRECTION_RATIO
+
+def detect_pointing_direction(hand_landmarks):
+    wrist = hand_landmarks.landmark[0]
+    index_tip = hand_landmarks.landmark[8]
+
+    dx = index_tip.x - wrist.x
+    dy = index_tip.y - wrist.y
+
+    if abs(dx) > abs(dy) * POINTING_RATIO and abs(dx) > POINTING_THRESHOLD:
+        return 'right' if dx > 0 else 'left'
+    if abs(dy) > abs(dx) * POINTING_RATIO and abs(dy) > POINTING_THRESHOLD:
+        return 'up' if dy < 0 else None
+    return None
+
 
 def play_media_key(key_name):
     """Cross-platform media key control"""
@@ -98,6 +115,8 @@ while cap.isOpened():
         confidence = hand_landmarks.landmark[9].z
         
         hand_history.append((palm_x, palm_y, time.time()))
+        pointing = detect_pointing_direction(hand_landmarks)
+        point_history.append(pointing)
         
         # Draw hand landmarks
         mp_drawing.draw_landmarks(image, hand_landmarks, mp_hands.HAND_CONNECTIONS)
@@ -125,6 +144,7 @@ while cap.isOpened():
                 last_gesture_time = current_time
                 gesture_ready = False
                 hand_history.clear()
+                point_history.clear()
 
             elif dx < -SWIPE_THRESHOLD and abs(dy) < 0.05 and is_consistent_movement(hand_history, 'x'):
                 print("LEFT SWIPE - Previous Track")
@@ -132,6 +152,7 @@ while cap.isOpened():
                 last_gesture_time = current_time
                 gesture_ready = False
                 hand_history.clear()
+                point_history.clear()
 
             elif dy < -SWIPE_THRESHOLD and abs(dx) < 0.05 and is_consistent_movement(hand_history, 'y'):
                 print("UP SWIPE - Play/Pause")
@@ -139,9 +160,34 @@ while cap.isOpened():
                 last_gesture_time = current_time
                 gesture_ready = False
                 hand_history.clear()
+                point_history.clear()
+
+        # Detect pointing gestures if the hand is not actively swiping
+        if gesture_ready and len(point_history) == point_history.maxlen and current_time - last_gesture_time > COOLDOWN:
+            if all(p == 'right' for p in point_history):
+                print("RIGHT POINT - Next Track")
+                play_media_key('next')
+                last_gesture_time = current_time
+                gesture_ready = False
+                hand_history.clear()
+                point_history.clear()
+            elif all(p == 'left' for p in point_history):
+                print("LEFT POINT - Previous Track")
+                play_media_key('prev')
+                last_gesture_time = current_time
+                gesture_ready = False
+                hand_history.clear()
+                point_history.clear()
+            elif all(p == 'up' for p in point_history):
+                print("UP POINT - Play/Pause")
+                play_media_key('play_pause')
+                last_gesture_time = current_time
+                gesture_ready = False
+                hand_history.clear()
+                point_history.clear()
 
     # Display info
-    cv2.putText(image, "Right Swipe: Next | Left Swipe: Prev | Up Swipe: Play/Pause", 
+    cv2.putText(image, "Swipe or point: Right=Next | Left=Prev | Up=Play/Pause",
                 (10, 30), cv2.FONT_HERSHEY_SIMPLEX, 0.6, (0, 255, 0), 2)
     cv2.putText(image, "Press ESC to quit", (10, 70), cv2.FONT_HERSHEY_SIMPLEX, 0.6, (0, 255, 0), 2)
     
