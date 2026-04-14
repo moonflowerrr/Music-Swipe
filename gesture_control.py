@@ -120,13 +120,16 @@ def detect_peace_sign(hand_landmarks):
     thumb_tip = hand_landmarks.landmark[4]
     thumb_ip = hand_landmarks.landmark[3]
     
-    # Check if index and middle fingers are extended
+    # Check if index and middle fingers are extended upward
     index_extended = index_tip.y < index_pip.y
     middle_extended = middle_tip.y < middle_pip.y
-    # Check if other fingers are folded
+
+    # Check if ring and pinky are folded
     ring_folded = ring_tip.y > ring_pip.y
     pinky_folded = pinky_tip.y > pinky_pip.y
-    thumb_folded = thumb_tip.y > thumb_ip.y
+
+    # Thumb should be near the palm or folded toward the hand
+    thumb_folded = thumb_tip.y > thumb_ip.y or abs(thumb_tip.x - index_tip.x) < 0.12
     
     return index_extended and middle_extended and ring_folded and pinky_folded and thumb_folded
 
@@ -145,14 +148,14 @@ def detect_hand_heart(hand_landmarks):
     thumb_index_distance = ((thumb_tip.x - index_tip.x)**2 + (thumb_tip.y - index_tip.y)**2)**0.5
     
     # Other fingers should be extended downward
-    middle_extended = middle_tip.y > middle_pip.y
-    ring_extended = ring_tip.y > hand_landmarks.landmark[14].y
-    pinky_extended = pinky_tip.y > hand_landmarks.landmark[18].y
+    middle_down = middle_tip.y > middle_pip.y
+    ring_down = ring_tip.y > hand_landmarks.landmark[14].y
+    pinky_down = pinky_tip.y > hand_landmarks.landmark[18].y
     
-    # Thumb and index should form a V (not too close, not too far)
-    v_formed = 0.05 < thumb_index_distance < 0.15
+    # Thumb and index should form a V shape, roughly level horizontally
+    v_formed = 0.05 < thumb_index_distance < 0.18 and abs(thumb_tip.y - index_tip.y) < 0.15
     
-    return v_formed and middle_extended and ring_extended and pinky_extended
+    return v_formed and middle_down and ring_down and pinky_down
 
 
 def detect_pointing_direction(hand_landmarks):
@@ -493,40 +496,16 @@ while cap.isOpened():
                     point_history.clear()
                     pinch_history.clear()
 
-            # Detect pinch gestures - continuous tracking
-            pinch = pinch_history[-1] if pinch_history else None
-            
-            if pinch and not is_pinching:
-                # Start a new pinch
-                is_pinching = True
-                pinch_start_time = current_time
-                pinch_direction = pinch
-                print(f"PINCH START - {pinch.upper()}")
-            elif pinch and is_pinching and pinch == pinch_direction:
-                # Continue holding the pinch - seek continuously
-                elapsed_time = current_time - pinch_start_time
-                # Seek 2 seconds per second of pinch hold (slower, more controlled)
-                seek_amount = elapsed_time * 2
-                if pinch_direction == 'left':
-                    seek_position('left', -seek_amount)
-                else:
-                    seek_position('right', seek_amount)
-            elif not pinch and is_pinching:
-                # Pinch released
-                is_pinching = False
-                print("PINCH END")
-                last_gesture_time = current_time
-                gesture_ready = False
-                hand_history.clear()
-                point_history.clear()
-                pinch_history.clear()
-
             # Detect peace sign (slow/reverb effect)
             if detect_peace_sign(hand_landmarks) and not peace_sign_detected and current_time - last_gesture_time > COOLDOWN:
                 peace_sign_detected = True
                 print("PEACE SIGN - Slow Reverb (0.75x)")
                 play_media_key('slow')
                 last_gesture_time = current_time
+                gesture_ready = False
+                hand_history.clear()
+                point_history.clear()
+                pinch_history.clear()
             elif not detect_peace_sign(hand_landmarks) and peace_sign_detected:
                 peace_sign_detected = False
             
@@ -536,6 +515,10 @@ while cap.isOpened():
                 print("HAND HEART - Nightcore (1.5x)")
                 play_media_key('nightcore')
                 last_gesture_time = current_time
+                gesture_ready = False
+                hand_history.clear()
+                point_history.clear()
+                pinch_history.clear()
             elif not detect_hand_heart(hand_landmarks) and hand_heart_detected:
                 hand_heart_detected = False
 
