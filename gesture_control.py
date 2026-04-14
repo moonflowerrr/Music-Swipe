@@ -6,6 +6,38 @@ import subprocess
 import platform
 import os
 
+def setup_audio_hijack():
+    """Launches Audio Hijack and ensures our session is running."""
+    print("🚀 Auto-configuring Audio Hijack...")
+    script = '''
+    tell application "Audio Hijack"
+        activate
+        -- Check if our session exists, if not, we can't automate block creation
+        if exists session "Application Audio" then
+            set theSession to session "Application Audio"
+            if not (running of theSession) then start theSession
+            
+            -- Ensure AUPitch is centered at 0 on start
+            tell theSession
+                set value of parameter "pitch" of block "AUPitch" to 0
+            end tell
+        end if
+    end tell
+    '''
+    subprocess.run(['osascript', '-e', script])
+
+def set_hijack_pitch(cents):
+    """Updates the AUPitch block in real-time."""
+    # Using Popen prevents the hand-tracking from lagging
+    script = f'''
+    tell application "Audio Hijack"
+        tell session "Application Audio"
+            set value of parameter "pitch" of block "AUPitch" to {cents}
+        end tell
+    end tell
+    '''
+    subprocess.Popen(['osascript', '-e', script])
+
 # Global variable to track current playback speed
 current_speed = 1.0
 
@@ -283,12 +315,12 @@ def play_media_key(key_name):
         elif key_name == 'play_pause':
             cmd = 'tell application "Spotify" to playpause'
         elif key_name == 'slow':
-            print("SLOW REVERB - 0.75x Speed")
-            set_playback_speed(0.75)
+            print("SLOW REVERB - Pitch Down")
+            set_hijack_pitch(-500)  # Adjust this value for deeper reverb vibes
             return
         elif key_name == 'nightcore':
-            print("NIGHTCORE - 1.5x Speed")
-            set_playback_speed(1.5)
+            print("NIGHTCORE - Pitch Up")
+            set_hijack_pitch(500)   # Adjust this for higher pitch
             return
         elif key_name == 'rewind':
             # Rewind by 5 seconds
@@ -343,11 +375,13 @@ def play_media_key(key_name):
         if key_name in key_map:
             subprocess.run(['playerctl', key_map.get(key_name, 'play-pause')])
         elif key_name == 'slow':
-            print("SLOW REVERB - 0.75x Speed")
-            set_playback_speed(0.75)
+            print("SLOW REVERB - Pitch Down")
+            set_hijack_pitch(-500)  # Adjust this value for deeper reverb vibes
+            return
         elif key_name == 'nightcore':
-            print("NIGHTCORE - 1.5x Speed")
-            set_playback_speed(1.5)
+            print("NIGHTCORE - Pitch Up")
+            set_hijack_pitch(500)   # Adjust this for higher pitch
+            return
         elif key_name == 'rewind':
             # Get current position and rewind by 5 seconds
             try:
@@ -366,6 +400,9 @@ def play_media_key(key_name):
                 subprocess.run(['playerctl', 'position', str(new_pos)])
             except:
                 pass
+
+# Launch and Configure Audio Hijack
+setup_audio_hijack()
 
 while cap.isOpened():
     success, image = cap.read()
@@ -399,6 +436,13 @@ while cap.isOpened():
         mp_drawing.draw_landmarks(image, hand_landmarks, mp_hands.HAND_CONNECTIONS)
         
         current_time = time.time()
+
+        if is_fist(hand_landmarks):
+            # Reset pitch to 0 when you make a fist
+            if current_speed != 1.0: 
+                print("FIST - Resetting Pitch")
+                set_hijack_pitch(0)
+                current_speed = 1.0
 
         if not is_fist(hand_landmarks):
             # Reset gesture readiness when the hand is stable again
