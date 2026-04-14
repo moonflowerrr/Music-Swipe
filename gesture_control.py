@@ -23,8 +23,8 @@ point_history = deque(maxlen=10)  # Store recent pointing directions
 last_gesture_time = 0
 COOLDOWN = 2.0  # Seconds between gestures
 SWIPE_THRESHOLD = 0.1  # Minimum distance for swipe detection
-POINTING_THRESHOLD = 0.18  # Minimum index-finger vector length for pointing
-POINTING_RATIO = 1.5  # Directional ratio for pointing vs. the other axis
+POINTING_THRESHOLD = 0.1  # Minimum index-finger vector length for pointing
+POINTING_RATIO = 1.2  # Directional ratio for pointing vs. the other axis
 RESET_THRESHOLD = 0.02  # Hand must settle before the next gesture
 DIRECTION_RATIO = 0.75  # Fraction of movement that must be in one direction
 
@@ -68,16 +68,15 @@ def is_index_pointing(hand_landmarks):
 
 
 def is_fist(hand_landmarks):
-    # Check if all fingers are curled (fist)
+    # Check if all fingers are curled (fist) - anytime all fingers are bent
     fingers = [
         (8, 6),   # index tip, pip
         (12, 10), # middle tip, pip
         (16, 14), # ring tip, pip
         (20, 18), # pinky tip, pip
     ]
-    thumb_curled = hand_landmarks.landmark[4].y > hand_landmarks.landmark[3].y  # thumb tip > thumb ip
     fingers_curled = all(hand_landmarks.landmark[tip].y > hand_landmarks.landmark[pip].y for tip, pip in fingers)
-    return thumb_curled and fingers_curled
+    return fingers_curled
 
 
 def detect_pointing_direction(hand_landmarks):
@@ -176,15 +175,15 @@ while cap.isOpened():
                 dy = newest_y - oldest_y
 
                 if dx > SWIPE_THRESHOLD and abs(dy) < 0.1 and is_consistent_movement(hand_history, 'x'):
-                    print("RIGHT SWIPE - Previous Track")
-                    play_media_key('prev')
+                    print("RIGHT SWIPE - Next Track")
+                    play_media_key('next')
                     last_gesture_time = current_time
                     gesture_ready = False
                     hand_history.clear()
                     point_history.clear()
                 elif dx < -SWIPE_THRESHOLD and abs(dy) < 0.1 and is_consistent_movement(hand_history, 'x'):
-                    print("LEFT SWIPE - Next Track")
-                    play_media_key('next')
+                    print("LEFT SWIPE - Previous Track")
+                    play_media_key('prev')
                     last_gesture_time = current_time
                     gesture_ready = False
                     hand_history.clear()
@@ -200,15 +199,15 @@ while cap.isOpened():
             # Detect pointing gestures if the hand is not actively swiping
             if gesture_ready and len(point_history) == point_history.maxlen and current_time - last_gesture_time > COOLDOWN:
                 if all(p == 'right' for p in point_history):
-                    print("RIGHT POINT - Previous Track")
-                    play_media_key('prev')
+                    print("RIGHT POINT - Next Track")
+                    play_media_key('next')
                     last_gesture_time = current_time
                     gesture_ready = False
                     hand_history.clear()
                     point_history.clear()
                 elif all(p == 'left' for p in point_history):
-                    print("LEFT POINT - Next Track")
-                    play_media_key('next')
+                    print("LEFT POINT - Previous Track")
+                    play_media_key('prev')
                     last_gesture_time = current_time
                     gesture_ready = False
                     hand_history.clear()
@@ -222,7 +221,7 @@ while cap.isOpened():
                     point_history.clear()
 
     # Display info
-    cv2.putText(image, "Right=Prev | Left=Next | Up=Play/Pause",
+    cv2.putText(image, "Right=Next | Left=Prev | Up=Play/Pause",
                 (10, 30), cv2.FONT_HERSHEY_SIMPLEX, 0.6, (0, 255, 0), 2)
     cv2.putText(image, "Press ESC to quit", (10, 70), cv2.FONT_HERSHEY_SIMPLEX, 0.6, (0, 255, 0), 2)
     
